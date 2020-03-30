@@ -122,11 +122,11 @@ def analyse(img, parsed_gpx):
 
     if dateOriginal < parsed_gpx.iloc[0]['dateTime']:
         print(
-            f"Picture taken before gpx track starts. first point => {parsed_gpx.iloc[0]['dateTime']}, pic.time => {dateOriginal}")
+            f"[{img.name}]  Picture taken before gpx track starts. lat: {parsed_gpx.iloc[0]['latitude']}, long: {parsed_gpx.iloc[0]['longitude']}, altitude: {parsed_gpx.iloc[-1]['elevation']}")
 
     if dateOriginal > parsed_gpx.iloc[-1]['dateTime']:
         print(
-            f"Picture taken after gpx track ended. last point => {parsed_gpx.iloc[-1]['dateTime']}, pic.time => {dateOriginal}")
+            f"[{img.name}]  Picture taken after gpx track ended. lat: {parsed_gpx.iloc[-1]['latitude']}, long: {parsed_gpx.iloc[-1]['longitude']}, altitude: {parsed_gpx.iloc[-1]['elevation']}")
 
     previous_point = None
     for index, point in parsed_gpx.iterrows():
@@ -143,7 +143,7 @@ def analyse(img, parsed_gpx):
 
                     if time_cursor == dateOriginal:
                         print(
-                            f"Matching photo with trackpoint : {point['dateTime']} at lat:{point['latitude']} long: {point['longitude']} altitude:{point['elevation']}m")
+                            f"[{img.name}]  Matching trackpoint at {point['dateTime']} : lat:{point['latitude']} long: {point['longitude']} altitude:{point['elevation']}m")
 
         previous_point = point
 
@@ -160,5 +160,5 @@ def analyse_in_dir(path_photos_dir, path_gpx_file, utc_offset_seconds):
         analyse(img, parsed_gpx)
 
 
-analyse_single_photo("../data/sample/sampledata-1.jpg", "../data/sample/sampledata-1.gpx", 7200)
-#analyse_in_dir("../data/sample", "../data/sample/sampledata-1.gpx", 7200)
+#analyse_single_photo("../data/sample_1/sampledata-1.jpg", "../data/sample_1/sampledata-1.gpx", 7200)
+analyse_in_dir("../data/sample_1", "../data/sample_1/sampledata-1.gpx", 7200)
