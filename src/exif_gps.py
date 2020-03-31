@@ -4,6 +4,10 @@ import gpxpy
 import pandas as pd
 from PIL import Image
 from PIL.ExifTags import TAGS, GPSTAGS
+import piexif
+from GPSPhoto import gpsphoto
+import exifread
+
 
 def read_gpx_dataframe(file_name, deltaMS):
 
@@ -53,6 +57,7 @@ def get_labeled_exif(exif):
         labeled[TAGS.get(key)] = val
 
     return labeled
+
 
 def get_geotagging(exif):
     if not exif:
@@ -106,6 +111,15 @@ def increment_time(timeString, seconds):
     c = b.strftime("%Y:%m:%d %H:%M:%S")
     return c
 
+def add_gps_infos(file_name, lat, long, alt, timestamp):
+    # Create a GPSPhoto Object
+    photo = gpsphoto.GPSPhoto(file_name)
+
+    # Create GPSInfo Data Object
+    info = gpsphoto.GPSInfo((lat, long), alt=alt, timeStamp= timestamp)
+
+    photo.modGPSData(info, file_name)
+
 def analyse_single_photo(path_single_photo, path_gpx_file, utc_offset_seconds):
     from pathlib import Path
     img = Path(path_single_photo)
@@ -114,7 +128,7 @@ def analyse_single_photo(path_single_photo, path_gpx_file, utc_offset_seconds):
 
 
 def analyse(img, parsed_gpx):
-
+    my_path = img.as_posix()
 
     exif = get_exif(img)
     dateOriginal = get_Tag(exif, 'DateTimeOriginal')
@@ -123,10 +137,13 @@ def analyse(img, parsed_gpx):
     if dateOriginal < parsed_gpx.iloc[0]['dateTime']:
         print(
             f"[{img.name}]  Picture taken before gpx track starts. lat: {parsed_gpx.iloc[0]['latitude']}, long: {parsed_gpx.iloc[0]['longitude']}, altitude: {parsed_gpx.iloc[-1]['elevation']}")
+        add_gps_infos(my_path, parsed_gpx.iloc[0]['latitude'], parsed_gpx.iloc[0]['longitude'], int(parsed_gpx.iloc[0]['elevation']), parsed_gpx.iloc[0]['dateTime'])
 
     if dateOriginal > parsed_gpx.iloc[-1]['dateTime']:
         print(
             f"[{img.name}]  Picture taken after gpx track ended. lat: {parsed_gpx.iloc[-1]['latitude']}, long: {parsed_gpx.iloc[-1]['longitude']}, altitude: {parsed_gpx.iloc[-1]['elevation']}")
+        add_gps_infos(my_path, parsed_gpx.iloc[-1]['latitude'], parsed_gpx.iloc[-1]['longitude'], int(parsed_gpx.iloc[-1]['elevation']), parsed_gpx.iloc[-1]['dateTime'])
+
 
     previous_point = None
     for index, point in parsed_gpx.iterrows():
@@ -144,7 +161,7 @@ def analyse(img, parsed_gpx):
                     if time_cursor == dateOriginal:
                         print(
                             f"[{img.name}]  Matching trackpoint at {point['dateTime']} : lat:{point['latitude']} long: {point['longitude']} altitude:{point['elevation']}m")
-
+                        add_gps_infos(my_path, point['latitude'], point['longitude'], int(point['elevation']), point['dateTime'])
         previous_point = point
 
 
@@ -156,9 +173,9 @@ def analyse_in_dir(path_photos_dir, path_gpx_file, utc_offset_seconds):
     from pathlib import Path
     p = Path(path_photos_dir)
 
-    for img in p.glob("*.jpg"):
+    for img in p.glob("*.JPG"):
         analyse(img, parsed_gpx)
 
 
-#analyse_single_photo("../data/sample_1/sampledata-1.jpg", "../data/sample_1/sampledata-1.gpx", 7200)
-analyse_in_dir("../data/sample_1", "../data/sample_1/sampledata-1.gpx", 7200)
+#analyse_single_photo("../data/sample_1/sampledata-2.jpg", "../data/sample_1/sampledata-1.gpx", 7200)
+analyse_in_dir("../data/sample-3", "../data/sample-3/sampledata-3.gpx", 7200)
