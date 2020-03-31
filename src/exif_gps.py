@@ -1,4 +1,5 @@
 import datetime
+import fractions
 
 import gpxpy
 import pandas as pd
@@ -59,40 +60,6 @@ def get_labeled_exif(exif):
     return labeled
 
 
-def get_geotagging(exif):
-    if not exif:
-        raise ValueError("No EXIF metadata found")
-
-    geotagging = {}
-    for (idx, tag) in TAGS.items():
-        if tag == 'GPSInfo':
-            if idx not in exif:
-                raise ValueError("No EXIF geotagging found")
-
-            for (key, val) in GPSTAGS.items():
-                if key in exif[idx]:
-                    geotagging[val] = exif[idx][key]
-
-    return geotagging
-
-def get_geotagging(exif):
-    if not exif:
-        raise ValueError("No EXIF metadata found")
-
-    geotagging = {}
-    for (idx, tag) in TAGS.items():
-        if tag == 'GPSInfo':
-            if idx not in exif:
-                raise ValueError("No EXIF geotagging found")
-
-            for (key, val) in GPSTAGS.items():
-                if key in exif[idx]:
-                    geotagging[val] = exif[idx][key]
-
-    return geotagging
-
-
-
 def get_Tag(exif, targetTag):
     ret = {}
     if not exif:
@@ -111,14 +78,68 @@ def increment_time(timeString, seconds):
     c = b.strftime("%Y:%m:%d %H:%M:%S")
     return c
 
-def add_gps_infos(file_name, lat, long, alt, timestamp):
-    # Create a GPSPhoto Object
-    photo = gpsphoto.GPSPhoto(file_name)
+def to_deg(value, loc):
+    """convert decimal coordinates into degrees, munutes and seconds tuple
+    Keyword arguments: value is float gps-value, loc is direction list ["S", "N"] or ["W", "E"]
+    return: tuple like (25, 13, 48.343 ,'N')
+    """
+    if value < 0:
+        loc_value = loc[0]
+    elif value > 0:
+        loc_value = loc[1]
+    else:
+        loc_value = ""
+    abs_value = abs(value)
+    deg =  int(abs_value)
+    t1 = (abs_value-deg)*60
+    min = int(t1)
+    sec = round((t1 - min)* 60, 5)
+    return (deg, min, sec, loc_value)
 
-    # Create GPSInfo Data Object
-    info = gpsphoto.GPSInfo((lat, long), alt=alt, timeStamp= timestamp)
 
-    photo.modGPSData(info, file_name)
+def change_to_rational(number):
+    """convert a number to rantional
+    Keyword arguments: number
+    return: tuple like (1, 2), (numerator, denominator)
+    """
+    f = fractions.Fraction(str(number))
+    return (f.numerator, f.denominator)
+
+
+def add_gps_infos(file_name, lat, lng, altitude):
+    """Adds GPS position as EXIF metadata
+    Keyword arguments:
+    file_name -- image file
+    lat -- latitude (as float)
+    lng -- longitude (as float)
+    altitude -- altitude (as float)
+    """
+    lat_deg = to_deg(lat, ["S", "N"])
+    lng_deg = to_deg(lng, ["W", "E"])
+
+    exiv_lat = (change_to_rational(lat_deg[0]), change_to_rational(lat_deg[1]), change_to_rational(lat_deg[2]))
+    exiv_lng = (change_to_rational(lng_deg[0]), change_to_rational(lng_deg[1]), change_to_rational(lng_deg[2]))
+
+    gps_ifd = {
+        piexif.GPSIFD.GPSVersionID: (2, 0, 0, 0),
+        piexif.GPSIFD.GPSAltitudeRef: 1,
+        piexif.GPSIFD.GPSAltitude: change_to_rational(round(altitude)),
+        piexif.GPSIFD.GPSLatitudeRef: lat_deg[3],
+        piexif.GPSIFD.GPSLatitude: exiv_lat,
+        piexif.GPSIFD.GPSLongitudeRef: lng_deg[3],
+        piexif.GPSIFD.GPSLongitude: exiv_lng,
+    }
+
+    gps_exif = {"GPS": gps_ifd}
+
+    # get original exif data first!
+    exif_data = piexif.load(file_name)
+
+    # update original exif data to include GPS tag
+    exif_data.update(gps_exif)
+    exif_bytes = piexif.dump(exif_data)
+
+    piexif.insert(exif_bytes, file_name)
 
 def analyse_single_photo(path_single_photo, path_gpx_file, utc_offset_seconds):
     from pathlib import Path
@@ -137,12 +158,12 @@ def analyse(img, parsed_gpx):
     if dateOriginal < parsed_gpx.iloc[0]['dateTime']:
         print(
             f"[{img.name}]  Picture taken before gpx track starts. lat: {parsed_gpx.iloc[0]['latitude']}, long: {parsed_gpx.iloc[0]['longitude']}, altitude: {parsed_gpx.iloc[-1]['elevation']}")
-        add_gps_infos(my_path, parsed_gpx.iloc[0]['latitude'], parsed_gpx.iloc[0]['longitude'], int(parsed_gpx.iloc[0]['elevation']), parsed_gpx.iloc[0]['dateTime'])
+        add_gps_infos(my_path, parsed_gpx.iloc[0]['latitude'], parsed_gpx.iloc[0]['longitude'], int(parsed_gpx.iloc[0]['elevation']))
 
     if dateOriginal > parsed_gpx.iloc[-1]['dateTime']:
         print(
             f"[{img.name}]  Picture taken after gpx track ended. lat: {parsed_gpx.iloc[-1]['latitude']}, long: {parsed_gpx.iloc[-1]['longitude']}, altitude: {parsed_gpx.iloc[-1]['elevation']}")
-        add_gps_infos(my_path, parsed_gpx.iloc[-1]['latitude'], parsed_gpx.iloc[-1]['longitude'], int(parsed_gpx.iloc[-1]['elevation']), parsed_gpx.iloc[-1]['dateTime'])
+        add_gps_infos(my_path, parsed_gpx.iloc[-1]['latitude'], parsed_gpx.iloc[-1]['longitude'], int(parsed_gpx.iloc[-1]['elevation']))
 
 
     previous_point = None
@@ -161,7 +182,7 @@ def analyse(img, parsed_gpx):
                     if time_cursor == dateOriginal:
                         print(
                             f"[{img.name}]  Matching trackpoint at {point['dateTime']} : lat:{point['latitude']} long: {point['longitude']} altitude:{point['elevation']}m")
-                        add_gps_infos(my_path, point['latitude'], point['longitude'], int(point['elevation']), point['dateTime'])
+                        add_gps_infos(my_path, point['latitude'], point['longitude'], int(point['elevation']))
         previous_point = point
 
 
@@ -173,9 +194,9 @@ def analyse_in_dir(path_photos_dir, path_gpx_file, utc_offset_seconds):
     from pathlib import Path
     p = Path(path_photos_dir)
 
-    for img in p.glob("*.JPG"):
+    for img in p.glob("*.jpg"):
         analyse(img, parsed_gpx)
 
 
-#analyse_single_photo("../data/sample_1/sampledata-2.jpg", "../data/sample_1/sampledata-1.gpx", 7200)
-analyse_in_dir("../data/sample-3", "../data/sample-3/sampledata-3.gpx", 7200)
+#analyse_single_photo("../data/sample-2-lite/sampledata-3.jpg", "../data/sample-2-lite/sampledata-2.gpx", 7200)
+analyse_in_dir("../data/sample-2-lite", "../data/sample-2-lite/sampledata-2.gpx", 7200)
