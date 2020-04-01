@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 import datetime
 import fractions
 
@@ -199,4 +201,63 @@ def analyse_in_dir(path_photos_dir, path_gpx_file, utc_offset_seconds):
 
 
 #analyse_single_photo("../data/sample-2-lite/sampledata-3.jpg", "../data/sample-2-lite/sampledata-2.gpx", 7200)
-analyse_in_dir("../data/sample-2-lite", "../data/sample-2-lite/sampledata-2.gpx", 7200)
+#analyse_in_dir("../data/sample-2-lite", "../data/sample-2-lite/sampledata-2.gpx", 7200)
+
+
+if __name__ == "__main__":
+    import argparse, textwrap
+
+    parser = argparse.ArgumentParser(
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        description="A script to add GPS data into image file Exif",
+        epilog=textwrap.dedent("""Examples :
+        Associate all images in './images_dir' with './example.gpx':
+           python exif_gps.py ./example.gpx --directory ./images_dir
+
+        Associate a single image file './image.jpg' with './example.gpx'
+           python exif_gps.py ./example.gpx  --singlefile ./image.jpg
+           
+       **Like previous example** with adjusting gpx timezone at GMT+2 (7200s)
+           python exif_gps.py ./example.gpx  --singlefile ./image.jpg --offset 7200""")
+
+
+    )
+    parser.add_argument(
+        "--directory",
+        help="Analyse all image files in the directory. When this flag is true, "
+        "the last argument must be a directory that contains several *.jpg",
+    )
+
+    parser.add_argument(
+        "--singlefile",
+        help="Location of the only image",
+    )
+
+    parser.add_argument(
+        "trace",
+        help="Location of the gpx trace ",
+    )
+
+    parser.add_argument(
+        "--offset",
+        help="Offset (in seconds) between images and *.gpx track"
+        """Example:
+         When using 'example.gpx' containing <time> values expressed as GMT Timestamp (i.e ending with a Z),
+          and 'example.jpg', an image taken during 'example.jpg', the picture may have a different capture TimeZone.
+          Saying the picture is taken in Paris (GMT+2), offset argument's should be '-offset 7200', because 'GMT+2' = 2hours = 7200seconds
+        """,
+        type=int,
+        default=0
+    )
+
+    args = parser.parse_args()
+    print(args.directory)
+
+    if args.directory:
+        print(f"Analysing all files in {args.directory}")
+        analyse_in_dir(args.directory, args.trace, args.offset)
+
+    else:
+        print(f"Analysing single file '{args.singlefile}'")
+        analyse_single_photo(args.singlefile, args.trace, args.offset)
+
