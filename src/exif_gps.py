@@ -2,6 +2,7 @@
 
 import datetime
 import fractions
+import glob
 
 import gpxpy
 import pandas as pd
@@ -10,6 +11,12 @@ from PIL.ExifTags import TAGS, GPSTAGS
 import piexif
 from GPSPhoto import gpsphoto
 import exifread
+
+def get_files(path, extensions):
+    all_files = []
+    for ext in extensions:
+        all_files.extend(path.glob(ext))
+    return all_files
 
 
 def read_gpx_dataframe(file_name, deltaMS):
@@ -139,6 +146,7 @@ def add_gps_infos(file_name, lat, lng, altitude):
 
     # update original exif data to include GPS tag
     exif_data.update(gps_exif)
+    exif_data['Exif'][41729] = b'1'
     exif_bytes = piexif.dump(exif_data)
 
     piexif.insert(exif_bytes, file_name)
@@ -196,11 +204,11 @@ def analyse_in_dir(path_photos_dir, path_gpx_file, utc_offset_seconds):
     from pathlib import Path
     p = Path(path_photos_dir)
 
-    for img in p.glob("*.jpg"):
+    for img in sorted(get_files(p, ['*.jpg', '*.JPG', '*.jpeg', '*.JPEG'])):
         analyse(img, parsed_gpx)
 
 
-#analyse_single_photo("../data/sample-2-lite/sampledata-3.jpg", "../data/sample-2-lite/sampledata-2.gpx", 7200)
+#analyse_single_photo("../data/sample-6/sampledata-6.jpg", "../data/sample-6/sampledata-6.gpx", 7200)
 #analyse_in_dir("../data/sample-2-lite", "../data/sample-2-lite/sampledata-2.gpx", 7200)
 
 
