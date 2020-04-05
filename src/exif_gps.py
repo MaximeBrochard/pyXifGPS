@@ -3,6 +3,7 @@
 import datetime
 import fractions
 import glob
+import math
 
 import gpxpy
 import pandas as pd
@@ -11,6 +12,22 @@ from PIL.ExifTags import TAGS, GPSTAGS
 import piexif
 from GPSPhoto import gpsphoto
 import exifread
+
+def haversine(coord1, coord2):
+    R = 6372800  # Earth radius in meters
+    lat1, lon1 = coord1
+    lat2, lon2 = coord2
+
+    phi1, phi2 = math.radians(lat1), math.radians(lat2)
+    dphi = math.radians(lat2 - lat1)
+    dlambda = math.radians(lon2 - lon1)
+
+    a = (
+        math.sin(dphi / 2) ** 2
+        + math.cos(phi1) * math.cos(phi2) * math.sin(dlambda / 2) ** 2
+    )
+
+    return 2 * R * math.atan2(math.sqrt(a), math.sqrt(1 - a))
 
 
 def get_files(path, extensions):
@@ -176,25 +193,35 @@ def analyse_single_photo(path_single_photo, path_gpx_file, utc_offset_seconds):
 
 
 def analyse(img, parsed_gpx):
+    print(f"****************[{img.name}]******************")
     my_path = img.as_posix()
 
     exif = get_exif(img)
     dateOriginal = get_Tag(exif, 'DateTimeOriginal')
 
-    if is_Tag(exif, 'GPSInfo'):
-        print(f"[{img.name}]    GPSInfo already in exif")
+    isgps = is_Tag(exif, 'GPSInfo')
+
+    if isgps:
+        print(f"GPSInfo already in exif")
 
     if dateOriginal < parsed_gpx.iloc[0]['dateTime']:
-        print(
-            f"[{img.name}]  Picture taken before gpx track starts. lat: {parsed_gpx.iloc[0]['latitude']}, long: {parsed_gpx.iloc[0]['longitude']}, altitude: {parsed_gpx.iloc[-1]['elevation']}")
-        add_gps_infos(my_path, parsed_gpx.iloc[0]['latitude'], parsed_gpx.iloc[0]['longitude'],
-                      int(parsed_gpx.iloc[0]['elevation']))
+        lat = parsed_gpx.iloc[0]['latitude']
+        long = parsed_gpx.iloc[0]['longitude']
+        ele = int(parsed_gpx.iloc[0]['elevation'])
+
+        add_gps_infos(my_path, lat, long, ele)
+
+        print(f"Picture taken before gpx track starts. lat: {lat}, long: {long}, altitude: {ele}")
 
     if dateOriginal > parsed_gpx.iloc[-1]['dateTime']:
-        print(
-            f"[{img.name}]  Picture taken after gpx track ended. lat: {parsed_gpx.iloc[-1]['latitude']}, long: {parsed_gpx.iloc[-1]['longitude']}, altitude: {parsed_gpx.iloc[-1]['elevation']}")
-        add_gps_infos(my_path, parsed_gpx.iloc[-1]['latitude'], parsed_gpx.iloc[-1]['longitude'],
-                      int(parsed_gpx.iloc[-1]['elevation']))
+        lat = parsed_gpx.iloc[-1]['latitude']
+        long = parsed_gpx.iloc[-1]['longitude']
+        ele = int(parsed_gpx.iloc[-1]['elevation'])
+
+        add_gps_infos(my_path, lat, long, ele)
+
+        print(f"Picture taken after gpx track ended. lat: {lat}, long: {long}, altitude: {ele}")
+
 
     previous_point = None
     for index, point in parsed_gpx.iterrows():
@@ -210,10 +237,19 @@ def analyse(img, parsed_gpx):
                     i += 1
 
                     if time_cursor == dateOriginal:
+                        lat = point['latitude']
+                        long = point['longitude']
+                        ele = int(point['elevation'])
+
+                        add_gps_infos(my_path, lat, long, ele, point['dateTime'])
                         print(
-                            f"[{img.name}]  Matching trackpoint at {point['dateTime']} : lat:{point['latitude']} long: {point['longitude']} altitude:{point['elevation']}m")
-                        add_gps_infos(my_path, point['latitude'], point['longitude'], int(point['elevation']),
-                                      point['dateTime'])
+                            f"Matching trackpoint at {point['dateTime']} : lat:{lat} long: {long} altitude:{ele}m")
+
+                        if isgps:
+                            distance = round(haversine((lat, long),
+                                            (parsed_gpx.iloc[0]['latitude'], parsed_gpx.iloc[0]['longitude'])), 0)
+                            print(f"Origin and analysed points are {distance}m apart")
+
         previous_point = point
 
 
@@ -284,5 +320,4 @@ if __name__ == "__main__":
         analyse_in_dir(args.directory, args.trace, args.offset)
 
     else:
-        print(f"Analysing single file '{args.singlefile}'")
         analyse_single_photo(args.singlefile, args.trace, args.offset)
