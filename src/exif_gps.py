@@ -145,7 +145,7 @@ def change_to_rational(number):
     return (f.numerator, f.denominator)
 
 
-def add_gps_infos(file_name, lat, lng, altitude, date):
+def add_gps_infos(file_name, lat, lng, altitude):
     """Adds GPS position as EXIF metadata
     Keyword arguments:
     file_name -- image file
