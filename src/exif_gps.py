@@ -4,6 +4,7 @@ import datetime
 import fractions
 import glob
 import math
+import sys
 
 import gpxpy
 import pandas as pd
@@ -12,6 +13,7 @@ from PIL.ExifTags import TAGS, GPSTAGS
 import piexif
 from GPSPhoto import gpsphoto
 import exifread
+
 
 def haversine(coord1, coord2):
     R = 6372800  # Earth radius in meters
@@ -23,8 +25,8 @@ def haversine(coord1, coord2):
     dlambda = math.radians(lon2 - lon1)
 
     a = (
-        math.sin(dphi / 2) ** 2
-        + math.cos(phi1) * math.cos(phi2) * math.sin(dlambda / 2) ** 2
+            math.sin(dphi / 2) ** 2
+            + math.cos(phi1) * math.cos(phi2) * math.sin(dlambda / 2) ** 2
     )
 
     return 2 * R * math.atan2(math.sqrt(a), math.sqrt(1 - a))
@@ -70,6 +72,75 @@ def read_gpx_dataframe(file_name, deltaMS):
     return df
 
 
+def get_exif_data(image):
+    """Returns a dictionary from the exif data of an PIL Image item. Also converts the GPS Tags"""
+    exif_data = {}
+    info = image._getexif()
+    if info:
+        for tag, value in info.items():
+            decoded = TAGS.get(tag, tag)
+            if decoded == "GPSInfo":
+                gps_data = {}
+                for t in value:
+                    sub_decoded = GPSTAGS.get(t, t)
+                    gps_data[sub_decoded] = value[t]
+
+                exif_data[decoded] = gps_data
+            else:
+                exif_data[decoded] = value
+
+    return exif_data
+
+
+def _get_if_exist(data, key):
+    if key in data:
+        return data[key]
+
+    return None
+
+
+def _convert_to_degress(value):
+    """Helper function to convert the GPS coordinates stored in the EXIF to degress in float format"""
+    d0 = value[0][0]
+    d1 = value[0][1]
+    d = float(d0) / float(d1)
+
+    m0 = value[1][0]
+    m1 = value[1][1]
+    m = float(m0) / float(m1)
+
+    s0 = value[2][0]
+    s1 = value[2][1]
+    s = float(s0) / float(s1)
+
+    return d + (m / 60.0) + (s / 3600.0)
+
+
+def get_lat_lon(exif_data):
+    """Returns the latitude and longitude, if available, from the provided exif_data (obtained through get_exif_data above)"""
+    lat = None
+    lon = None
+
+    if "GPSInfo" in exif_data:
+        gps_info = exif_data["GPSInfo"]
+
+        gps_latitude = _get_if_exist(gps_info, "GPSLatitude")
+        gps_latitude_ref = _get_if_exist(gps_info, 'GPSLatitudeRef')
+        gps_longitude = _get_if_exist(gps_info, 'GPSLongitude')
+        gps_longitude_ref = _get_if_exist(gps_info, 'GPSLongitudeRef')
+
+        if gps_latitude and gps_latitude_ref and gps_longitude and gps_longitude_ref:
+            lat = _convert_to_degress(gps_latitude)
+            if gps_latitude_ref != "N":
+                lat = 0 - lat
+
+            lon = _convert_to_degress(gps_longitude)
+            if gps_longitude_ref != "E":
+                lon = 0 - lon
+
+        return lat, lon
+
+
 # Get the exif of a file
 def get_exif(filename):
     image = Image.open(filename)
@@ -98,13 +169,8 @@ def get_Tag(exif, targetTag):
     return ret[targetTag]
 
 
-def is_Tag(exif, param):
-    ret = {}
-    for (tag, value) in exif.items():
-        decoded = TAGS.get(tag)
-        ret[decoded] = value
-
-    if param in ret:
+def is_tag(labeled_exif, target_tag):
+    if target_tag in labeled_exif:
         return True
     else:
         return False
@@ -192,17 +258,22 @@ def analyse_single_photo(path_single_photo, path_gpx_file, utc_offset_seconds):
     analyse(img, parsed_gpx)
 
 
-def analyse(img, parsed_gpx):
-    print(f"****************[{img.name}]******************")
-    my_path = img.as_posix()
+def analyse(path_to_img, parsed_gpx):
+    global origin_coord
+    print(f"****************[{path_to_img.name}]******************")
+    my_path = path_to_img.as_posix()
 
-    exif = get_exif(img)
-    dateOriginal = get_Tag(exif, 'DateTimeOriginal')
+    img = Image.open(my_path)
+    labeled_exif = get_exif_data(img)
 
-    isgps = is_Tag(exif, 'GPSInfo')
+    dateOriginal = labeled_exif['DateTime']
 
-    if isgps:
-        print(f"GPSInfo already in exif")
+    if is_tag(labeled_exif, 'GPSInfo') and len(labeled_exif['GPSInfo']) != 0:
+        isgps = True
+        origin_coord = get_lat_lon(labeled_exif)
+        print(f"GPSInfo already in exif {origin_coord}")
+    else:
+        isgps = False
 
     if dateOriginal < parsed_gpx.iloc[0]['dateTime']:
         lat = parsed_gpx.iloc[0]['latitude']
@@ -212,6 +283,10 @@ def analyse(img, parsed_gpx):
         add_gps_infos(my_path, lat, long, ele)
 
         print(f"Picture taken before gpx track starts. lat: {lat}, long: {long}, altitude: {ele}")
+        if isgps:
+            distance = round(haversine((lat, long),
+                                       (origin_coord[0], origin_coord[1])), 0)
+            print(f"Origin and analysed points are {distance}m apart")
 
     if dateOriginal > parsed_gpx.iloc[-1]['dateTime']:
         lat = parsed_gpx.iloc[-1]['latitude']
@@ -221,7 +296,10 @@ def analyse(img, parsed_gpx):
         add_gps_infos(my_path, lat, long, ele)
 
         print(f"Picture taken after gpx track ended. lat: {lat}, long: {long}, altitude: {ele}")
-
+        if isgps:
+            distance = round(haversine((lat, long),
+                                       (origin_coord[0], origin_coord[1])), 0)
+            print(f"Origin and analysed points are {distance}m apart")
 
     previous_point = None
     for index, point in parsed_gpx.iterrows():
@@ -241,13 +319,13 @@ def analyse(img, parsed_gpx):
                         long = point['longitude']
                         ele = int(point['elevation'])
 
-                        add_gps_infos(my_path, lat, long, ele, point['dateTime'])
+                        add_gps_infos(my_path, lat, long, ele)
                         print(
                             f"Matching trackpoint at {point['dateTime']} : lat:{lat} long: {long} altitude:{ele}m")
 
                         if isgps:
                             distance = round(haversine((lat, long),
-                                            (parsed_gpx.iloc[0]['latitude'], parsed_gpx.iloc[0]['longitude'])), 0)
+                                                       (origin_coord[0], origin_coord[1])), 0)
                             print(f"Origin and analysed points are {distance}m apart")
 
         previous_point = point
@@ -313,7 +391,7 @@ if __name__ == "__main__":
     )
 
     args = parser.parse_args()
-    print(args.directory)
+
 
     if args.directory:
         print(f"Analysing all files in {args.directory}")
