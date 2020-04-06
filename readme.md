@@ -17,7 +17,7 @@ What it does well:
 ## Usage
 It implies to have all the dependencies above previoulsy install on your environment 
 
-After making `src/exif_gps.py` executable (basically with a `chmod +x src/exif_gps.py`), move to `src/`, and you are able to run :
+After making `exif_gps.py` executable (basically with a `chmod +x src/exif_gps.py`), you are able to run :
 
 ```
 python exif_gps.py path/to/gpx/file --directory path/to/images/directory --offset **int_value**
