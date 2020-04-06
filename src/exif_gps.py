@@ -266,7 +266,7 @@ def analyse(path_to_img, parsed_gpx):
     img = Image.open(my_path)
     labeled_exif = get_exif_data(img)
 
-    dateOriginal = labeled_exif['DateTime']
+    dateOriginal = labeled_exif['DateTimeOriginal']
 
     if is_tag(labeled_exif, 'GPSInfo') and len(labeled_exif['GPSInfo']) != 0:
         isgps = True
