@@ -1,0 +1,6 @@
+Simple GPX
+https://simple-gpx.herokuapp.com
+Tolerance chosen: 10
+Split track: no, split distance: 100km 
+Original tracks: 1, simplified tracks: 1
+Original trackpoints: 13229, simplified trackpoints: 739, average trackpoints per track: 739
