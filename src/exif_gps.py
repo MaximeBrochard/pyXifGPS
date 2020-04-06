@@ -2,17 +2,13 @@
 
 import datetime
 import fractions
-import glob
 import math
-import sys
 
 import gpxpy
 import pandas as pd
 from PIL import Image
 from PIL.ExifTags import TAGS, GPSTAGS
 import piexif
-from GPSPhoto import gpsphoto
-import exifread
 
 
 def haversine(coord1, coord2):
